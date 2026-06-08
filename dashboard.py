@@ -67,7 +67,7 @@ selected_asset = st.sidebar.selectbox(
     index=0
 )
 
-# FIXED: Assign precision and symbol maps safely to keep evaluations clean
+# Assign precision and symbol maps safely to keep evaluations clean
 if selected_asset == "BTC / USDT":
     symbol = "BTCUSDT"
     is_futures = False
@@ -96,7 +96,7 @@ st_autorefresh(interval=refresh_map[timeframe], key="asset_refresh")
 st.sidebar.success(f"Last Refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # -------------------- ASSET-ISOLATED SESSION STATE INIT --------------------
-# FIXED: State tracking keys are now uniquely appended by symbol name to prevent asset bleedover
+# State tracking keys are now uniquely appended by symbol name to prevent asset bleedover
 signal_key = f"last_signal_{symbol}"
 candle_time_key = f"last_candle_time_{symbol}"
 alert_time_key = f"last_alert_time_{symbol}"
@@ -279,7 +279,7 @@ trend = "Bullish" if ema15 > ema50 else "Bearish"
 
 # -------------------- RISK MANAGEMENT --------------------
 risk_pct = 0.005  # 0.5%
-tp_rr = 2
+tp_rr = 2.5       # UPDATED: Changed from 2 to 2.5 for a 1:2.5 Risk-to-Reward Ratio
 entry = price
 
 if signal == "BUY":
@@ -296,7 +296,6 @@ else:
 cooldown_sec = 0  
 now = time.time()
 
-# FIXED: Now tracks criteria based on symbol-isolated keys
 should_trigger = (
     signal in ["BUY", "SELL"]
     and not has_open_trade  

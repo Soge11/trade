@@ -61,7 +61,7 @@ st.title("🚀 Live Trading Signal Dashboard")
 # Global 5-minute Auto Refresh
 st_autorefresh(interval=300000, key="global_5min_refresh")
 
-# FIXED: Set index=1 so XAU / USD (Gold) loads automatically on startup
+# Configured index=1 so XAU / USD (Gold) loads automatically on startup
 selected_asset = st.sidebar.selectbox(
     "Select Trading Symbol",
     ["BTC / USDT", "XAU / USD (Gold)"],
@@ -114,18 +114,19 @@ if alert_time_key not in st.session_state:
 if is_futures:
     url = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval={timeframe}&limit=1000"
 else:
-    url = f"https://data.binance.com/api/v3/klines?symbol={symbol}&interval={timeframe}&limit=1000"
+    url = f"https://api3.binance.com/api/v3/klines?symbol={symbol}&interval={timeframe}&limit=1000"
 
 try:
     response = requests.get(url, timeout=10)
     
-    # Cloud fallback routing to handle geo-location 451 barriers
+    # Cloud fallback routing to handle geo-location 451 barriers on Futures/Spot
     if response.status_code == 451:
         if is_futures:
             st.sidebar.warning("🔄 Global Futures blocked by cloud IP region. Routing to Testnet Gateway...")
             url = f"https://testnet.binancefuture.com/fapi/v1/klines?symbol={symbol}&interval={timeframe}&limit=1000"
             response = requests.get(url, timeout=10)
         else:
+            st.sidebar.warning("🔄 Global Spot blocked by cloud IP region. Routing to US Gateway...")
             url = f"https://api.binance.us/api/v3/klines?symbol={symbol}&interval={timeframe}&limit=1000"
             response = requests.get(url, timeout=10)
 
@@ -133,6 +134,7 @@ try:
     data = response.json()
 except Exception as e:
     st.error(f"Error fetching data from Binance ({selected_asset}): {e}")
+    st.info("💡 Infrastructure Note: If errors persist, run the app on your local machine for full unrestricted data access.")
     st.stop()
 
 df = pd.DataFrame(
@@ -279,7 +281,7 @@ trend = "Bullish" if ema15 > ema50 else "Bearish"
 
 # -------------------- RISK MANAGEMENT --------------------
 risk_pct = 0.005  # 0.5%
-tp_rr = 2.5       # 1:2.5 Risk-to-Reward Ratio
+tp_rr = 2.5       # Configured Risk-to-Reward Ratio to 1:2.5
 entry = price
 
 if signal == "BUY":

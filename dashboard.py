@@ -65,11 +65,26 @@ if "last_alert_time" not in st.session_state:
 st.session_state.journal = load_journal()
 
 # -------------------- UI SETUP --------------------
-st.set_page_config(page_title="BTC Live Signal Dashboard", layout="wide")
-st.title("🚀 BTC Live Signal Dashboard")
+st.set_page_config(page_title="Live Multi-Asset Dashboard", layout="wide")
+st.title("🚀 Live Trading Signal Dashboard")
 
 # Global 5-minute Auto Refresh
 st_autorefresh(interval=300000, key="global_5min_refresh")
+
+# 1. NEW FEATURE: Asset Selector Option added to sidebar
+selected_asset = st.sidebar.selectbox(
+    "Select Trading Symbol",
+    ["BTC / USDT", "XAU / USD (Gold)"],
+    index=0
+)
+
+# Map human selection to exact Binance system strings
+if selected_asset == "BTC / USDT":
+    symbol = "BTCUSDT"
+    is_futures = False
+else:
+    symbol = "XAUUSDT"
+    is_futures = True  # Gold is listed under Binance Futures endpoints
 
 timeframe = st.sidebar.selectbox(
     "Select Timeframe",
@@ -85,20 +100,23 @@ refresh_map = {
     "1h": 30000,
     "4h": 60000
 }
-st_autorefresh(interval=refresh_map[timeframe], key="btc_refresh")
+st_autorefresh(interval=refresh_map[timeframe], key="asset_refresh")
 
 st.sidebar.success(f"Last Refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-# -------------------- FETCH DATA --------------------
-symbol = "BTCUSDT"
-url = f"https://data-api.binance.vision/api/v3/klines?symbol={symbol}&interval={timeframe}&limit=1000"
+# -------------------- DYNAMIC FETCH DATA --------------------
+# Route to Spot or Futures API depending on the chosen asset symbol
+if is_futures:
+    url = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval={timeframe}&limit=1000"
+else:
+    url = f"https://data-api.binance.vision/api/v3/klines?symbol={symbol}&interval={timeframe}&limit=1000"
 
 try:
     response = requests.get(url, timeout=10)
     response.raise_for_status()
     data = response.json()
 except Exception as e:
-    st.error(f"Error fetching data from Binance: {e}")
+    st.error(f"Error fetching data from Binance ({selected_asset}): {e}")
     st.stop()
 
 df = pd.DataFrame(
@@ -117,7 +135,7 @@ df["time"] = pd.to_datetime(df["time"], unit="ms")
 df = df.dropna(subset=["open", "high", "low", "close"])
 
 if df.empty:
-    st.warning("No candle data available.")
+    st.warning(f"No candle data available for {symbol}.")
     st.stop()
 
 # -------------------- INDICATORS --------------------
@@ -144,7 +162,11 @@ live_pnl_pct = 0.0
 live_pnl_cash = 0.0
 
 if not st.session_state.journal.empty:
-    open_trades = st.session_state.journal[st.session_state.journal["Result"] == "OPEN"]
+    # Filter open positions tracking ONLY the currently selected symbol
+    open_trades = st.session_state.journal[
+        (st.session_state.journal["Result"] == "OPEN") & 
+        (st.session_state.journal["Symbol"] == symbol)
+    ]
     if not open_trades.empty:
         has_open_trade = True
         open_trade_idx = open_trades.index[-1]
@@ -155,12 +177,10 @@ if has_open_trade:
     trade_time = pd.to_datetime(trade_row["DateTime"])
     trade_type = trade_row["Signal"]
     
-    # FIXED: Lock variables exclusively to the historical entry parameters of the open trade
     active_entry = float(trade_row["Entry"])
     active_sl = float(trade_row["SL"])
     active_tp = float(trade_row["TP"])
     
-    # Calculate live tracking metrics using locked entry values
     if trade_type == "BUY":
         live_pnl_pct = ((price - active_entry) / active_entry) * 100
         live_pnl_cash = price - active_entry
@@ -168,13 +188,11 @@ if has_open_trade:
         live_pnl_pct = ((active_entry - price) / active_entry) * 100
         live_pnl_cash = active_entry - price
 
-    # Filter historic dataframe candles evaluated strictly after position execution timestamp
     sub_df = df[df["time"] >= (trade_time - pd.Timedelta(minutes=15))]
     triggered_close = False
     exit_p = None
     res_status = "OPEN"
     
-    # 1. Historical Candle Scan Loop using active execution targets
     for idx, row in sub_df.iterrows():
         high_p = float(row["high"])
         low_p = float(row["low"])
@@ -202,7 +220,6 @@ if has_open_trade:
                 triggered_close = True
                 break
 
-    # 2. Real-time Spot Check Fallback using active execution targets
     if not triggered_close:
         if trade_type == "BUY":
             if price <= active_sl:
@@ -263,6 +280,7 @@ else:
 cooldown_sec = 0  
 now = time.time()
 
+# Combined state tracking to check if this exact asset is locked or free to trigger
 should_trigger = (
     signal in ["BUY", "SELL"]
     and not has_open_trade  
@@ -287,7 +305,7 @@ if should_trigger:
     save_journal(st.session_state.journal)
 
     message = (
-        "🚀 BTC SIGNAL ALERT\n\n"
+        f"🚀 {symbol} SIGNAL ALERT\n\n"
         f"📊 Symbol: {symbol}\n"
         f"⏱ Timeframe: {timeframe}\n"
         f"📌 Signal: {signal}\n\n"
@@ -299,7 +317,7 @@ if should_trigger:
         f"🕒 Candle Time: {current_candle_time}\n"
     )
     send_alert(message)
-    st.toast(f"New {signal} signal auto-logged & sent to Telegram! 🚀")
+    st.toast(f"New {symbol} {signal} signal auto-logged & sent to Telegram! 🚀")
 
     st.session_state.last_signal = signal
     st.session_state.last_candle_time = current_candle_time
@@ -307,9 +325,9 @@ if should_trigger:
 
 # -------------------- DISPLAY CURRENT METRICS --------------------
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("BTC Price", f"${price:,.2f}")
-c2.metric("Trend", trend)
-c3.metric("RSI", f"{rsi:.2f}")
+c1.metric(f"{symbol} Price", f"${price:,.2f}")
+c2.metric("Trend Track", trend)
+c3.metric("RSI (14)", f"{rsi:.2f}")
 
 if signal == "BUY":
     c4.success("BUY 🟢")
@@ -321,7 +339,7 @@ else:
 # -------------------- LIVE RUNNING POSITION DISPLAY --------------------
 if has_open_trade:
     st.markdown("---")
-    st.subheader("📡 Live Active Position Tracker")
+    st.subheader(f"📡 Live Active Tracker: {symbol}")
     
     trade_row = st.session_state.journal.loc[open_trade_idx]
     lc1, lc2, lc3, lc4 = st.columns(4)
@@ -339,6 +357,7 @@ st.markdown("---")
 st.subheader("📈 Automated Trading Journal & Historical Performance")
 
 if not st.session_state.journal.empty:
+    # Filter metrics to track global history
     closed_trades = st.session_state.journal[st.session_state.journal["Result"].isin(["TP HIT", "SL HIT"])]
     total_trades = len(closed_trades)
     wins = len(closed_trades[closed_trades["Result"] == "TP HIT"])
@@ -398,16 +417,19 @@ fig.add_trace(
         high=df["high"],
         low=df["low"],
         close=df["close"],
-        name="BTC"
+        name=symbol
     )
 )
 
 fig.add_trace(go.Scatter(x=df["time"], y=df["EMA15"], name="EMA15", line=dict(color='orange', width=1.5)))
 fig.add_trace(go.Scatter(x=df["time"], y=df["EMA50"], name="EMA50", line=dict(color='cyan', width=1.5)))
 
-# FIXED: Ensure chart horizontal anchor overlay lines render the active trade parameters, not live signals
+# Ensure lines only overlay on the chart if they match the selected asset
 if not st.session_state.journal.empty:
-    active_row = st.session_state.journal[st.session_state.journal["Result"] == "OPEN"]
+    active_row = st.session_state.journal[
+        (st.session_state.journal["Result"] == "OPEN") & 
+        (st.session_state.journal["Symbol"] == symbol)
+    ]
     if not active_row.empty:
         chart_entry = float(active_row.iloc[-1]["Entry"])
         chart_sl = float(active_row.iloc[-1]["SL"])

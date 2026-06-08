@@ -61,22 +61,23 @@ st.title("🚀 Live Trading Signal Dashboard")
 # Global 5-minute Auto Refresh
 st_autorefresh(interval=300000, key="global_5min_refresh")
 
-# Configured index=1 so XAU / USD (Gold) loads automatically on startup
 selected_asset = st.sidebar.selectbox(
     "Select Trading Symbol",
     ["BTC / USDT", "XAU / USD (Gold)"],
     index=1
 )
 
-# Assign precision and symbol maps safely to keep evaluations clean
+# FIXED: Assign pip size values and precision scales dynamically per symbol asset type
 if selected_asset == "BTC / USDT":
     symbol = "BTCUSDT"
     is_futures = False
     precision_digits = 2
+    pip_value = 1.0     # 1 Pip = $1.00 on BTC
 else:
     symbol = "XAUUSDT"
     is_futures = True  
-    precision_digits = 4 # Gold requires higher fractional precision 
+    precision_digits = 4 
+    pip_value = 0.1     # 1 Pip = $0.10 on Gold Futures
 
 timeframe = st.sidebar.selectbox(
     "Select Timeframe",
@@ -134,7 +135,6 @@ try:
     data = response.json()
 except Exception as e:
     st.error(f"Error fetching data from Binance ({selected_asset}): {e}")
-    st.info("💡 Infrastructure Note: If errors persist, run the app on your local machine for full unrestricted data access.")
     st.stop()
 
 df = pd.DataFrame(
@@ -280,16 +280,21 @@ elif ema15 < ema50 and rsi < 45:
 trend = "Bullish" if ema15 > ema50 else "Bearish"
 
 # -------------------- RISK MANAGEMENT --------------------
-risk_pct = 0.005  # 0.5%
-tp_rr = 2.5       # Configured Risk-to-Reward Ratio to 1:2.5
+# FIXED: Replaced standard risk percentages with explicit Pip calculation rules
+sl_pips = 100
+tp_pips = 300
 entry = price
 
+# Convert requested Pip targets into actual market dollar values
+sl_distance_usd = sl_pips * pip_value
+tp_distance_usd = tp_pips * pip_value
+
 if signal == "BUY":
-    sl = entry * (1 - risk_pct)
-    tp = entry * (1 + risk_pct * tp_rr)
+    sl = entry - sl_distance_usd
+    tp = entry + tp_distance_usd
 elif signal == "SELL":
-    sl = entry * (1 + risk_pct)
-    tp = entry * (1 - risk_pct * tp_rr)
+    sl = entry + sl_distance_usd
+    tp = entry - tp_distance_usd
 else:
     sl = entry
     tp = entry
@@ -327,8 +332,8 @@ if should_trigger:
         f"⏱ Timeframe: {timeframe}\n"
         f"📌 Signal: {signal}\n\n"
         f"💰 Entry: {round(entry, precision_digits)}\n"
-        f"🛑 SL: {round(sl, precision_digits)}\n"
-        f"🎯 TP: {round(tp, precision_digits)}\n\n"
+        f"🛑 SL (100 Pips): {round(sl, precision_digits)}\n"
+        f"🎯 TP (300 Pips): {round(tp, precision_digits)}\n\n"
         f"📈 Trend: {trend}\n"
         f"📊 RSI: {round(rsi, 2)}\n\n"
         f"🕒 Candle Time: {current_candle_time}\n"

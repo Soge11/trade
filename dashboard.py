@@ -61,10 +61,11 @@ st.title("🚀 Live Trading Signal Dashboard")
 # Global 5-minute Auto Refresh
 st_autorefresh(interval=300000, key="global_5min_refresh")
 
+# FIXED: Set index=1 so XAU / USD (Gold) loads automatically on startup
 selected_asset = st.sidebar.selectbox(
     "Select Trading Symbol",
     ["BTC / USDT", "XAU / USD (Gold)"],
-    index=0
+    index=1
 )
 
 # Assign precision and symbol maps safely to keep evaluations clean
@@ -96,7 +97,6 @@ st_autorefresh(interval=refresh_map[timeframe], key="asset_refresh")
 st.sidebar.success(f"Last Refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # -------------------- ASSET-ISOLATED SESSION STATE INIT --------------------
-# State tracking keys are now uniquely appended by symbol name to prevent asset bleedover
 signal_key = f"last_signal_{symbol}"
 candle_time_key = f"last_candle_time_{symbol}"
 alert_time_key = f"last_alert_time_{symbol}"
@@ -279,7 +279,7 @@ trend = "Bullish" if ema15 > ema50 else "Bearish"
 
 # -------------------- RISK MANAGEMENT --------------------
 risk_pct = 0.005  # 0.5%
-tp_rr = 2.5       # UPDATED: Changed from 2 to 2.5 for a 1:2.5 Risk-to-Reward Ratio
+tp_rr = 2.5       # 1:2.5 Risk-to-Reward Ratio
 entry = price
 
 if signal == "BUY":
